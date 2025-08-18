@@ -6,7 +6,7 @@ import torch.optim as optim
 from tqdm import tqdm
 import numpy as np
 
-def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, device):
+def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch, device):
     # Instead of using all negative samples, we wil pick 150
     # CURRENTLY, BUMPING UP STATS TO 167 BINS PER SAMPLE
 
@@ -68,10 +68,13 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, devic
     masked_class_output = class_output.squeeze(1)[sampled_indices]  # shape: [num_selected]
     masked_target = target[sampled_indices]# shape: [num_selected]
 
-    masked_reg_output = reg_output.squeeze(1)[sampled_indices]
-    masked_photon_target = photon_target[sampled_indices]
-
-    # CURRENTLY HERE
+    # Mask the regression output to consider ONLY bins where softmax class > 0.5
+    masked_reg_output = None
+    masked_photon_target = None
+    if epoch > 2: # Only calculate regression loss once classification has converged a bit to avoid seeing large # of 0's in early its
+        mask = (torch.sigmoid(class_output) > 0.5).squeeze(1)   # shape [batch]
+        masked_reg_output = reg_output.squeeze(1)[mask]
+        masked_photon_target = photon_target[mask]
     
     # Calculate BCEWithLogits loss on masked values
     if masked_target.numel() == 0:
@@ -84,13 +87,15 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, devic
         class_loss = criterion(masked_class_output, masked_target)
 
         regression_criterion = torch.nn.MSELoss()
-        reg_loss = regression_criterion(masked_reg_output, masked_photon_target)
+        reg_loss = 0.0
+        if epoch > 2:
+            reg_loss = regression_criterion(masked_reg_output, masked_photon_target)
 
         scale_factor = 1.0
 
     loss = class_loss + (scale_factor * reg_loss)
 
-    return loss, sampled_indices, masked_target, masked_class_output, class_output, target
+    return loss, sampled_indices, masked_target, masked_class_output, class_output, target, masked_reg_output, masked_photon_target
 
 def bce_loss(data, hit_times, class_output, device): # works
     data = data.squeeze(1)

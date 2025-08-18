@@ -58,9 +58,9 @@ class UNet1D(nn.Module):
 
         # Classification & Regression (photons per bin)
         self.final_conv = nn.Conv1d(base_channels, 1, 1) # [B, 1, 16000] # for yes/no signal
-        # self.reg_head = nn.Conv1d(base_channels, 1, 1) # For how many photons
+        self.reg_head = nn.Conv1d(base_channels, 1, 1) # For how many photons
         
-        self.regression_head = nn.Conv1d(1, 1, kernel_size=1)
+        # self.regression_head = nn.Conv1d(1, 1, kernel_size=1)
 
     def forward(self, x, mode='bce'):
         skips = []
@@ -83,10 +83,10 @@ class UNet1D(nn.Module):
         # For regression task, use regression head
         # Sigmoid is included in BCEWithLogits loss (don't include it as a layer here)
         class_logits = self.final_conv(x)
-        # photon_reg = self.reg_head(x)
+        photon_reg = self.reg_head(x)
         if mode == 'bce':
-            # return class_logits, photon_reg
-            return class_logits
+            return class_logits, photon_reg
+            # return class_logits
         elif mode == 'regression':
             return self.regression_head(x)
 

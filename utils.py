@@ -40,7 +40,7 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
                         class_output = class_output[..., :data.shape[-1]]
                         reg_output = reg_output[..., :data.shape[-1]]
                 ##########################################################################################
-                loss, _, _, _, _, _ = mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, device)
+                loss, _, _, _, _, _, _, _ = mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch, device)
                 # loss = mined_bce_loss(data, hit_times, class_output, device)
                 acc = val_bce(data, hit_times, class_output, device)
             if mode == 'bce':
@@ -59,7 +59,6 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
             # averaged over the batch already
             train_loss += loss.item() 
             train_acc += acc
-
             train_progress.set_postfix({"train_loss": train_loss/(i+1), "train_acc": train_acc/(i+1)})
 
         # divide by number of batches seen
@@ -84,9 +83,9 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
             val_acc = 0.0
             val_progress = tqdm(val_loader, leave=False, position=0)
 
-            for i, (val_data, val_target, val_hit_times) in enumerate(val_progress):
+            for i, (val_data, val_target, val_hit_times, photon_target, photon_list) in enumerate(val_progress):
                 val_data, val_target = val_data.to(device), val_target.to(device) # both [B, 1, 16000]
-                val_class_output = model(val_data, mode='bce')
+                val_class_output, val_reg_output = model(val_data, mode='bce')
 
                 if mode == 'mined_bce':
                     ### Ensure class_output matches data shape - hack added for unet since 1000 us is not power of 2
@@ -94,10 +93,12 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
                         diff = val_data.shape[-1] - val_class_output.shape[-1]
                         if diff > 0:
                             val_class_output = F.pad(val_class_output, (0, diff))
+                            val_reg_output = F.pad(reg_output, (0, diff))
                         else:
                             val_class_output = val_class_output[..., :val_data.shape[-1]]
+                            val_reg_output = val_reg_output[..., :val_data.shape[-1]]
                     ##########################################################################################
-                    loss, _, _, _, _, _ = mined_bce_loss(val_data, val_hit_times, val_class_output, device)
+                    loss, _, _, _, _, _, _, _ = mined_bce_loss(val_data, val_hit_times, photon_list, val_class_output, val_reg_output, epoch, device)
                     acc = val_bce(val_data, val_hit_times, val_class_output, device)
                 if mode == 'bce':
                     loss, _ = bce_loss(val_data, val_hit_times, val_class_output, device)
