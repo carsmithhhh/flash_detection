@@ -56,11 +56,16 @@ class UNet1D(nn.Module):
             ))
             channels = channels // 2
 
-        # Classification & Regression (photons per bin)
-        self.final_conv = nn.Conv1d(base_channels, 1, 1) # [B, 1, 16000] # for yes/no signal
-        self.reg_head = nn.Conv1d(base_channels, 1, 1) # For how many photons
-        
-        # self.regression_head = nn.Conv1d(1, 1, kernel_size=1)
+        # OLD ARCHITECTURE
+        # self.final_conv = nn.Conv1d(base_channels, 1, 1) # [B, 1, 16000] # for yes/no signal
+        # self.reg_head = nn.Conv1d(base_channels, 1, 1) # For how many photons
+
+        # NEW ARCHITECTURE: Classification & Regression Heads - expanding to 2-layer MLPs each
+        self.class_l1 = nn.Conv1d(base_channels, base_channels // 2, 1)
+        self.class_l2 = nn.Conv1d(base_channels // 2, 1, 1)
+
+        self.reg_l1 = nn.Conv1d(base_channels, base_channels // 2, 1)
+        self.reg_l2 = nn.Conv1d(base_channels // 2, 1, 1)
 
     def forward(self, x, mode='bce'):
         skips = []
@@ -80,15 +85,19 @@ class UNet1D(nn.Module):
             x = torch.cat([x, skip], dim=1)
             x = dec(x)
 
-        # For regression task, use regression head
-        # Sigmoid is included in BCEWithLogits loss (don't include it as a layer here)
-        class_logits = self.final_conv(x)
-        photon_reg = self.reg_head(x)
+        # OLD ARCHITECTURE
+        # class_logits = self.final_conv(x)
+        # photon_reg = self.reg_head(x)
+
+        # NEW ARCHITECTURE
+        class_logits = self.class_l2(F.relu(self.class_l1(x))) # BCEWithLogitsLoss expects raw logits
+        photon_reg = self.reg_l2(F.relu(self.reg_l1(x)))
+        
+        
         if mode == 'bce':
             return class_logits, photon_reg
+            # return class_logits, F.softplus(photon_reg)+1e-8 # softplus if doing poisson nll with log_input = False
             # return class_logits
-        elif mode == 'regression':
-            return self.regression_head(x)
 
 ################ Lightweight Transformer Model for Same Purpose ################
 
@@ -115,7 +124,7 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:x.size(0), :]
         
 
-class TransformerModel(nn.Module):
+class TransformerModelOld(nn.Module):
     def __init__(self, in_channels=1, d_model=48, num_heads=4, num_layers=2, token_size=100):
         super().__init__()
         self.d_model = d_model

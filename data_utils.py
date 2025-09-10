@@ -22,9 +22,14 @@ class WaveformDataset(Dataset):
         Supports multiple flashes per waveform by creating a binary indicator array
         where multiple time bins can be set to 1.0 for multiple flashes.
         """
+        # NEW - padding
+        max_hits = max(len(arr) for arr in data['arrival_times'])
+        arrival_times = self._pad_sequences(data['arrival_times'], max_hits, pad_value=-1)
+        nphotons = self._pad_sequences(data['num_photons'], max_hits, pad_value=0)
+        
         waveforms = np.asarray(data['waveforms'])
-        arrival_times = np.asarray(data['arrival_times'])
-        nphotons = np.asarray(data['num_photons'])
+        # arrival_times = np.asarray(data['arrival_times'])
+        # nphotons = np.asarray(data['num_photons'])
         offset = 0
     
         # Ensure waveforms is 2D: (N, L)
@@ -45,7 +50,6 @@ class WaveformDataset(Dataset):
         for i, times in enumerate(arrival_times):
             # Handle different input formats
             if times is None or (isinstance(times, (list, np.ndarray)) and len(times) == 0):
-                # No flashes
                 hit_times_list.append([])
                 photon_list.append([])
                 continue
@@ -80,3 +84,12 @@ class WaveformDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.waveforms[idx], self.arrival_times[idx], self.hit_times_list[idx], self.photon_per_times[idx], self.photon_list[idx]
+
+    def _pad_sequences(self, seq_list, max_len, pad_value=-1):
+        """Pad 1D arrays in seq_list to max_len with pad_value."""
+        padded = np.full((len(seq_list), max_len), pad_value, dtype=np.int64)
+        for i, seq in enumerate(seq_list):
+            seq = np.asarray(seq)
+            length = min(len(seq), max_len)
+            padded[i, :length] = seq[:length]
+        return padded

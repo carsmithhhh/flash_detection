@@ -8,15 +8,14 @@ import numpy as np
 
 def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch, device):
     # Instead of using all negative samples, we wil pick 150
-    # CURRENTLY, BUMPING UP STATS TO 167 BINS PER SAMPLE
-
+    # 8.27 - Sampling 500 hard negatives instead of 50
     data = data.squeeze(1)
     offset = 0
     N, L = data.shape
     target = torch.zeros((N, L), dtype=torch.float32).to(device)
     photon_target = torch.zeros((N, L), dtype=torch.float32).to(device)
 
-    wf_width = 20 # ns, eyeball for now
+    wf_width = 900 # 20 ns, eyeball for now
     rng = np.random.default_rng()
     sampled_indices = []
 
@@ -25,7 +24,11 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
 
     for i, times in enumerate(hit_times):
         # Always include the true hit times
-        if times is None or (isinstance(times, (list, np.ndarray)) and len(times) == 0):
+        if (
+            times is None 
+            or (isinstance(times, (list, np.ndarray)) and len(times) == 0)
+            or (isinstance(times, (list, np.ndarray)) and np.all(np.array(times) < 0))
+        ):
             continue  # no flashes
 
         if torch.is_tensor(times):
@@ -37,14 +40,17 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
 
         hit_indices = []
         for j, t in enumerate(times):
-            t_idx = int(np.clip(t + offset, 0, L - 1))
-            photon_num = photon_list[i][j]
-            target[i, t_idx] = 1.0
-            photon_target[i, t_idx] = photon_num
-            sampled_indices[i, t_idx] = True
-            hit_indices.append(t_idx)
+            if t < 0:
+                pass
+            else:
+                t_idx = int(np.clip(t + offset, 0, L - 1))
+                photon_num = photon_list[i][j]
+                target[i, t_idx] = 1.0
+                photon_target[i, t_idx] = photon_num
+                sampled_indices[i, t_idx] = True
+                hit_indices.append(t_idx)
 
-        # Hard negative mining: 50 negative bins within wf_width of any hit time (but not the hit time itself)
+        # Hard negative mining: 500 negative bins within wf_width of any hit time (but not the hit time itself)
         wf_neg_candidates = set()
         for t_idx in hit_indices:
             start = max(0, t_idx)
@@ -54,7 +60,7 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
         wf_neg_candidates.difference_update(hit_indices)
         wf_neg_candidates = list(wf_neg_candidates)
         if len(wf_neg_candidates) > 0:
-            chosen_wf_neg = rng.choice(wf_neg_candidates, size=min(50, len(wf_neg_candidates)), replace=False)
+            chosen_wf_neg = rng.choice(wf_neg_candidates, size=min(500, len(wf_neg_candidates)), replace=False)
             sampled_indices[i, chosen_wf_neg] = True
 
         # Random negative mining: 100 random bins outside wf_width of any hit and not a hit
@@ -71,7 +77,7 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
     # Mask the regression output to consider ONLY bins where softmax class > 0.5
     masked_reg_output = None
     masked_photon_target = None
-    if epoch > 2: # Only calculate regression loss once classification has converged a bit to avoid seeing large # of 0's in early its
+    if epoch > 1: # Only calculate regression loss once classification has converged a bit to avoid seeing large # of 0's in early its
         mask = (torch.sigmoid(class_output) > 0.5).squeeze(1)   # shape [batch]
         masked_reg_output = reg_output.squeeze(1)[mask]
         masked_photon_target = photon_target[mask]
@@ -81,17 +87,17 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
         # No positive or negative samples selected, return zero loss
         class_loss = torch.tensor(0.0, device=device, requires_grad=True)
     else:
-        pos_weight_val = 100.0 
+        pos_weight_val = 500.0 
         pos_weight = torch.tensor([pos_weight_val], device=masked_target.device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         class_loss = criterion(masked_class_output, masked_target)
 
-        regression_criterion = torch.nn.MSELoss()
+        regression_criterion = torch.nn.L1Loss() #torch.nn.MSELoss()
         reg_loss = 0.0
-        if epoch > 2:
+        if epoch > 3:
             reg_loss = regression_criterion(masked_reg_output, masked_photon_target)
 
-        scale_factor = 1.0
+        scale_factor = 0.0
 
     loss = class_loss + (scale_factor * reg_loss)
 
@@ -104,7 +110,11 @@ def bce_loss(data, hit_times, class_output, device): # works
     target = torch.zeros((N, L), dtype=torch.float32).to(device)
 
     for i, times in enumerate(hit_times):
-        if times is None or (isinstance(times, (list, np.ndarray)) and len(times) == 0):
+        if (
+            times is None 
+            or (isinstance(times, (list, np.ndarray)) and len(times) == 0)
+            or (isinstance(times, (list, np.ndarray)) and np.all(np.array(times) < 0))
+        ):
             continue  # no flashes
 
         if torch.is_tensor(times):
@@ -115,8 +125,11 @@ def bce_loss(data, hit_times, class_output, device): # works
             times = np.asarray(times).flatten()
 
         for t in times:
-            t_idx = int(np.clip(t + offset, 0, L - 1))
-            target[i, t_idx] = 1.0
+            if t < 0:
+                pass
+            else:
+                t_idx = int(np.clip(t + offset, 0, L - 1))
+                target[i, t_idx] = 1.0
 
     # calculate weights
     pos_weight_val = L
@@ -125,6 +138,8 @@ def bce_loss(data, hit_times, class_output, device): # works
     loss = criterion(class_output.squeeze(1), target)
 
     return loss, target
+
+
 
 def val_bce(data, hit_times, class_output, device):
     data = data.squeeze(1)
@@ -136,9 +151,12 @@ def val_bce(data, hit_times, class_output, device):
     hit_indices_list = []
     for i, times in enumerate(hit_times):
         indices = []
-        if times is None or (isinstance(times, (list, np.ndarray)) and len(times) == 0):
-            hit_indices_list.append(indices)
-            continue
+        if (
+            times is None 
+            or (isinstance(times, (list, np.ndarray)) and len(times) == 0)
+            or (isinstance(times, (list, np.ndarray)) and np.all(np.array(times) < 0))
+        ):
+            continue  # no flashes
 
         if torch.is_tensor(times):
             times = times.detach().cpu().numpy().flatten()
@@ -148,9 +166,12 @@ def val_bce(data, hit_times, class_output, device):
             times = np.asarray(times).flatten()
 
         for t in times:
-            t_idx = int(np.clip(t + offset, 0, L - 1))
-            target[i, t_idx] = 1.0
-            indices.append(t_idx)
+            if t < 0:
+                pass
+            else:
+                t_idx = int(np.clip(t + offset, 0, L - 1))
+                target[i, t_idx] = 1.0
+                indices.append(t_idx)
 
         hit_indices_list.append(indices)
 
@@ -341,3 +362,102 @@ def k_local_minima(batch_tensor, k_per_sample):
     topk_values[~valid_mask] = float('inf')
 
     return topk_indices, topk_values
+
+
+
+def overall_class_acc(hit_times, class_output, device): # computed per batch
+    '''
+    Parameters:
+        - hit_times: list of arrays, truth hit times for each sample
+        - class_output: [B, 1, L] per-bin logits
+    '''
+    with torch.no_grad():
+        B, _, L = class_output.shape
+        class_output = class_output.squeeze(1)  # [B, L]
+        mask = (torch.sigmoid(class_output) > 0.5)  # [B, L]
+
+        batch_accs = []
+        for i in range(B):
+            # predicted hit indices for this sample
+            pred_hits = set(torch.nonzero(mask[i], as_tuple=False).squeeze(1).tolist())
+
+            # true hit indices for this sample
+            true_hits = set(int(t) for t in hit_times[i] if t > 0)
+
+            if len(true_hits) > 0:
+                correct_hits = len(true_hits.intersection(pred_hits))
+                acc = correct_hits / len(true_hits) # ACCURACY: DIVIDE BY # TRUE BINS
+            else:
+                acc = 0.0
+            batch_accs.append(acc)
+
+    return sum(batch_accs) / len(batch_accs)
+
+def overall_class_purity(hit_times, class_output, device): # computed per batch
+    with torch.no_grad():
+        B, _, L = class_output.shape
+        class_output = class_output.squeeze(1)  # [B, L]
+        mask = (torch.sigmoid(class_output) > 0.5)  # [B, L]
+
+        batch_accs = []
+        for i in range(B):
+            # predicted hit indices for this sample
+            pred_hits = set(torch.nonzero(mask[i], as_tuple=False).squeeze(1).tolist())
+
+            # true hit indices for this sample
+            true_hits = set(int(t) for t in hit_times[i] if t > 0)
+
+            if len(pred_hits) > 0:
+                correct_hits = len(true_hits.intersection(pred_hits))
+                acc = correct_hits / len(pred_hits) # PURITY -> DIVIDE BY # PREDICTED BINS
+            else:
+                acc = 0.0
+            batch_accs.append(acc)
+    
+    return sum(batch_accs) / len(batch_accs)
+
+
+def regression_acc(hit_times, photon_bins, reg_output, class_output, device, tol=0.5): # # correctly classified nonzero bins / total # nonzero bins
+    '''
+    Parameters:
+        - photon_bins: [B, 1, L] per-bin binary indicators (1 if photons present, 0 otherwise)
+        - reg_output: [B, 1, L] per-bin regression values
+        - tol: tolerance for float vs int comparison (default 0.5 → round)
+    Returns:
+        - batch_acc: average per-sample regression accuracy
+    '''
+    with torch.no_grad():
+        B, _, L = reg_output.shape
+        reg_output = reg_output.squeeze(1)   # [B, L]
+        photon_bins = photon_bins.squeeze(1) # [B, L]
+
+        batch_accs = []
+        for i in range(B):
+            # True hit indices for this sample (where photons are present)
+            true_hits = set(int(t) for t in hit_times[i] if t > 0)
+            # print(true_hit_idx)
+
+            if len(true_hit_idx) > 0:
+                correct = 0
+                for j in true_hit_idx:
+                    pred_val = reg_output[i, j].item()
+                    true_val = photon_bins[i, j].item()
+                    # Check if regression output is within tol of the true value (rounded)
+                    if abs(pred_val - true_val) <= tol:
+                        correct += 1
+                print(correct, len(true_hit_idx))
+                acc = correct / len(true_hit_idx)
+            else:
+                acc = 0.0
+            batch_accs.append(acc)
+
+    return sum(batch_accs) / len(batch_accs)
+
+
+
+
+
+
+
+
+                      
