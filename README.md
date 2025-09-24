@@ -1,7 +1,7 @@
 # flash_detection
 Individual flash detection in LArTPC optical waveforms.
+Some paths still need to be updated in files and notebooks since reorganization - will fix as I encounter.
 
-### Contains
 **Main Workflow**
 * `notebooks/simulating_data.ipynb`: Generate a sample of optical waveform data
 * `run_training.py`: Instantiate a model architecture & training configuration; train the model.
