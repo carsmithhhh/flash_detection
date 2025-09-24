@@ -1,4 +1,4 @@
-*.npy
+notebooks/performance_analysis/no_delay_bin_precision/
 *.pth
 *.pkl
 wandb/
