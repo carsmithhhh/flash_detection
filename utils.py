@@ -10,7 +10,7 @@ from model import UNet1D
 from hybrid_loss import *
 
 
-def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device, epochs, mode='bce', wandb_logger=None):
+def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device, epochs, mode='bce', wandb_logger=None, mse=False):
     model.train()
     optimizer.zero_grad()
 
@@ -62,7 +62,7 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
                 
                 # merged_mask = merge_bins(class_output)
                 # merged_pure = merged_class_purity(merged_mask, hit_times, device)
-                reg_rmse = regression_rmse(hit_times, photon_target, reg_output, class_output, device)
+                reg_rmse = regression_rmse(hit_times, photon_target, reg_output, class_output, device, mse=mse)
 
             # step
             loss.backward()
@@ -98,7 +98,7 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
 
         if wandb_logger is not None:
             wandb_logger.log({
-                "epoch": epoch,
+                "epoch": epoch+30,
                 "train_loss": train_loss,
                 "train_acc": train_acc,
                 "train_pure": train_pure,
@@ -138,7 +138,7 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
                     pure = overall_class_purity(val_hit_times, val_class_output, device)
                     # merged_mask = merge_bins(val_class_output)
                     # merged_pure = merged_class_purity(merged_mask, val_hit_times, device)
-                    reg_rmse = regression_rmse(val_hit_times, photon_target, val_reg_output, val_class_output, device)
+                    reg_rmse = regression_rmse(val_hit_times, photon_target, val_reg_output, val_class_output, device, mse=mse)
                 elif mode == 'bce':
                     loss, _ = bce_loss(val_data, val_hit_times, val_class_output, device)
                     # acc, _, _, _, _ = val_bce(val_data, val_hit_times, val_class_output, device)
@@ -178,13 +178,13 @@ def train_model_2(model, train_loader, val_loader, scheduler, optimizer, device,
                 })
             scheduler.step(val_loss)
 
-        if (epoch+1) % 10 == 0:
+        if (epoch+1) % 5 == 0:
             # save checkpoint
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-            }, f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/200k_unet_28_{epoch+130}.pth")
+            }, f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v5_+/conformer_v5+_{epoch}.pth")
 
     return results
 

@@ -30,7 +30,7 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:seq_len, :].unsqueeze(1).to(x.device)  # [seq_len, 1, d_model]
 
 class TransformerModel(nn.Module):
-    def __init__(self, in_channels=1, d_model=48, num_heads=4, num_layers=2, token_size=100, window_len = 8000):
+    def __init__(self, in_channels=1, d_model=128, num_heads=8, num_layers=4, token_size=100, window_len = 8000):
         super().__init__()
 
         self.d_model = d_model

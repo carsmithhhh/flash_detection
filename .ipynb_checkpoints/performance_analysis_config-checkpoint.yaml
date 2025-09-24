@@ -1,0 +1,16 @@
+# Which studies to run, and which data to use for performance analysis script
+# Options for double_flash/fixed_photon: [random, 10, 50, 100, 500, 1000]
+# acc and reco_frac calculated separately for flash 1 & 2 in double_flash
+
+single_flash:
+    merged_acc: False
+    merged_pure: False
+    merged_window_width: False
+    reco_frac: False
+
+double_flash:
+    fixed_photon: random
+    merged_acc: True
+    merged_pure: True
+    reco_frac: True
+    

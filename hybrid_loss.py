@@ -84,9 +84,24 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
     
     # Only calculate regression loss once classification has converged a bit to avoid seeing large # of 0's in early its
     if include_reg:
+        # mask = (photon_target > 0)
         mask = (torch.sigmoid(class_output) > 0.5).squeeze(1)
         masked_reg_output = reg_output.squeeze(1)[mask]
         masked_photon_target = photon_target[mask]
+    
+        # Training regression instead on true positives + some sampled negatives - does NOT help regression systematic offset, as tested in in conformer_v3
+        # pos_mask = photon_target > 0
+        # neg_mask = photon_target == 0
+        
+        # pos_indices = pos_mask.nonzero(as_tuple=True)[0]
+        # neg_indices = neg_mask.nonzero(as_tuple=True)[0]
+        
+        # k = min(len(pos_indices), len(neg_indices)) # for now, 1:1 ratio
+        # sampled_neg_indices = neg_indices[torch.randperm(len(neg_indices))[:k]]
+        
+        # mixed_indices = torch.cat([pos_indices, sampled_neg_indices])
+        # masked_reg_output = reg_output.squeeze(1)[mixed_indices]
+        # masked_photon_target = photon_target[mixed_indices]
 
     # Calculate BCEWithLogits loss on masked values
     if masked_target.numel() == 0:
@@ -102,10 +117,18 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         class_loss = criterion(masked_class_output, masked_target)
 
-        regression_criterion = torch.nn.PoissonNLLLoss(log_input=True)
         reg_loss = torch.tensor(0.0, device=device, requires_grad=True)
+        regression_criterion = torch.nn.PoissonNLLLoss(log_input=True)
         if include_reg and masked_reg_output.numel() > 0:
             reg_loss = regression_criterion(masked_reg_output, masked_photon_target)
+        
+        # TESTING MSE WITH LOG1P REGRESSION LOSS
+        # regression_criterion = torch.nn.MSELoss()
+        # if include_reg and masked_reg_output.numel() > 0:
+        #     reg_pred = masked_reg_output.squeeze()
+        #     reg_true = torch.log1p(masked_photon_target.squeeze())
+        #     reg_loss = torch.mean((reg_pred - reg_true) ** 2)
+        
         scale_factor = 0.1
 
     loss = class_loss + (scale_factor * reg_loss)
@@ -164,7 +187,7 @@ def overall_class_purity(hit_times, class_output, device): # computed per batch
     return sum(batch_accs) / len(batch_accs)
 
 
-def regression_rmse(hit_times, photon_bins, reg_output, class_output, device):
+def regression_rmse(hit_times, photon_bins, reg_output, class_output, device, mse=False):
     """
     Compute regression RMSE over nonzero bins.
 
@@ -176,6 +199,8 @@ def regression_rmse(hit_times, photon_bins, reg_output, class_output, device):
     Returns:
         batch_rmse: average per-sample RMSE across true hit bins
     """
+    predict_fn = torch.expm1 if mse else torch.exp  
+        
     with torch.no_grad():
         B, _, L = reg_output.shape
         reg_output = reg_output.squeeze(1).to(device)  # [B, L]
@@ -186,7 +211,7 @@ def regression_rmse(hit_times, photon_bins, reg_output, class_output, device):
             true_hit_idx = [int(t) for t in hit_times[i] if t >= 0]
 
             if len(true_hit_idx) > 0:
-                preds = torch.exp(reg_output[i, true_hit_idx])
+                preds = predict_fn(reg_output[i, true_hit_idx])
                 targets = photon_bins[i, true_hit_idx].float()
                 mse = torch.mean((preds - targets) ** 2)
                 rmse = torch.sqrt(mse)

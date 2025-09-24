@@ -2,7 +2,9 @@ import torch
 from torchvision import transforms
 import random
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 import numpy as np
+import yaml
 
 class WaveformDataset(Dataset):
     def __init__(self, data):
@@ -50,7 +52,6 @@ class WaveformDataset(Dataset):
         for i, times in enumerate(arrival_times):
             # Handle different input formats
             if times is None or (isinstance(times, (list, np.ndarray)) and len(times) == 0):
-                # No flashes
                 hit_times_list.append([])
                 photon_list.append([])
                 continue
@@ -94,3 +95,87 @@ class WaveformDataset(Dataset):
             length = min(len(seq), max_len)
             padded[i, :length] = seq[:length]
         return padded
+
+def load_models(config_path, model_classes, device="cuda"):
+    with open(config_path, "r") as f:
+        configs = yaml.safe_load(f)
+
+    models = {}
+    for name, cfg in configs.items():
+        if not isinstance(cfg, dict):
+            continue
+            
+        if not cfg.get("include", True):
+            continue
+            
+        print(name)
+        cls = model_classes[cfg["class"]]
+        model = cls(**cfg.get("args", {}))
+        model.to(device)
+
+        checkpoint = torch.load(cfg["checkpoint"], map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.eval()
+
+        models[name] = [model, cfg.get("reg_loss")]
+    return models
+
+##### Loading in Data + Make a Single Dataloader #####
+def custom_collate_fn(batch):
+    """
+    Custom collate function for WaveformDataset.
+    Each item in batch is a tuple: (waveform, arrival_time).
+    Returns:
+        waveforms: Tensor of shape (batch_size, waveform_length)
+        arrival_times: Tensor of shape (batch_size,) or (batch_size, 1)
+        hit_times: Tensor of shape (?) with a list of hit times per sample
+    """
+    waveforms, arrival_times, hit_times, photon_bins, photon_list = zip(*batch)
+    waveforms = torch.stack(waveforms, dim=0)
+
+     # Normalizing waveforms
+    waveforms = (waveforms - waveforms.mean(dim=1, keepdim=True)) / (waveforms.std(dim=1, keepdim=True) + 1e-8)
+    waveforms = waveforms.unsqueeze(1)  # add channel dimension [B,1,L]
+
+    # for binary classification
+    arrival_times = torch.stack(arrival_times, dim=0)
+    arrival_times = arrival_times.unsqueeze(1) # adding channel dimension
+    photon_bins = torch.stack(photon_bins, dim=0)
+    photon_bins = photon_bins.unsqueeze(1)
+
+    # for regression, just use hit times
+    hit_times = [item[2] for item in batch]
+    hit_times = torch.tensor(hit_times)
+    photon_list = [item[4] for item in batch]
+    photon_list = torch.tensor(photon_list)
+    
+    return waveforms, arrival_times, hit_times, photon_bins, photon_list
+
+def make_dataloader(data_path, seed=42, batch_size=25, shuffle=False, num_workers=0, pin_memory=False, drop_last=False):
+    """
+    Given a path to a .npy file containing waveform data, 
+    returns a DataLoader with the WaveformDataset and custom collate function.
+    """
+    # Load the .npy file
+    load_wfs = np.load(data_path, allow_pickle=True).item()
+
+    # Instantiate your dataset
+    dataset = WaveformDataset(load_wfs)
+
+    # Torch generator for reproducibility
+    g = torch.Generator()
+    g.manual_seed(seed)
+
+    # Create DataLoader
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        generator=g,
+        collate_fn=custom_collate_fn,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=drop_last
+    )
+
+    return dataloader

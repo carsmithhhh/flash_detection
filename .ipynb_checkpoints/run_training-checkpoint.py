@@ -18,6 +18,7 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 
 from transformer import *
+from conformer import *
 from utils import *
 
 seed = 42
@@ -106,54 +107,53 @@ test_loader = DataLoader(
     drop_last=False
 )
 
-
 # Training
 epochs=50
 device = 'cuda'
 
 logger = wandb.init(
-    project="transformer_grid",
-    name="lambda_0.1_poisson_log_part2",
-    id="28ozznz1",   # <- put the real run ID here
-    resume="must"
+    project="conformer_token_kernels",
+    name="ckpts_conformer_v5_onlypos",
+    config={
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "lr": 1e-4,
+    }
 )
 # logger = wandb.init(
-#     project="unet_200k_training",
-#     name="new_200k_logpois001",
-#     config={
-#         "epochs": epochs,
-#         "batch_size": batch_size,
-#         "lr": 1e-4,
-#     }
+#     project="conformer_token_kernels",
+#     name="ckpts_conformerv3",
+#     id="2rb9iv3s",
+#     resume="must"
 # )
 
-# model = UNet1D()
-model = TransformerModel()
+# Continue training Conformer, load from a checkpoint
+model = ConformerModel(d_model=256, num_heads=8, num_layers=4, token_size=100, window_len = 8000, tokens='multi-level', kernel_sizes=[20, 50, 100, 400], mlp=False, ffn_factor=8, dropout=0.2)
 model.to(device)
-wandb.watch(model, log="all", log_freq=100)
 
 criterion = torch.nn.BCEWithLogitsLoss() # combines sigmoid + loss
 optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-6)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
 
+# Load from a checkpoint
+# checkpoint = torch.load(f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v2_20epochs.pth", weights_only=True)
+# model.load_state_dict(checkpoint['model_state_dict'])
+# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total number of parameters: {total_params}")
+print(model)
+wandb.watch(model, log="all", log_freq=100)
+
 mode = 'mined_bce'
 
-# Load in a checkpoint
-checkpoint = torch.load(f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/transformer_28_130.pth", weights_only=False)
-optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-6)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
-model.load_state_dict(checkpoint['model_state_dict'])
-optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-start_epoch = 130 + 1
+results = train_model_2(model, train_loader, val_loader, scheduler, optimizer, device, epochs, mode, logger, mse=False)
 
-results = train_model_2(model, train_loader, val_loader, scheduler, optimizer, device, epochs, mode, logger)
-
-np.save('trans_200k_180epochs_stats.npy', results, allow_pickle=True)
 torch.save({
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'scheduler_state_dict': scheduler.state_dict(),
-}, f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/transformer_180.pth")
+}, f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v5_drop_onlypos_50.pth")
 
 wandb.finish()
