@@ -78,26 +78,30 @@ def merged_class_acc(merged_mask, hit_times, device):
 def merged_class_purity(merged_mask, hit_times, device, no_sum=False): # computed per batch
     with torch.no_grad():
         B, _, L = merged_mask.shape
+        print(B, L)
 
-        batch_accs = []
+        batch_pures = []
         for i in range(B):
             # within predicted window bins
             pred_hits = set(torch.nonzero(merged_mask[i], as_tuple=False).flatten().tolist())
             mask_row = merged_mask[i, 0]  # [L]
+            #print("mask row: ", mask_row)
             intervals = mask_to_intervals(mask_row) #[[s1, e1], [s2, e2], ...]
+            #print("intervals: ", intervals)
             true_hits = set(int(t) for t in hit_times[i] if t > 0)
+            #print("true hits: ", true_hits)
 
             if len(pred_hits) > 0:
                 correct_hits = len(true_hits.intersection(pred_hits))
-                acc = correct_hits / len(intervals) # PURITY -> DIVIDE BY # merged windows
+                pur = correct_hits / len(intervals) # PURITY -> DIVIDE BY # merged windows
             else:
-                acc = 0.0
-            batch_accs.append(acc)
+                pur = 0.0
+            batch_pures.append(pur)
 
     if no_sum:
-        return batch_accs
+        return batch_pures
     else:
-        return sum(batch_accs) / len(batch_accs)
+        return sum(batch_pures) / len(batch_pures)
 
 def sum_photons_in_intervals(photon_counts, merged_mask):
     """

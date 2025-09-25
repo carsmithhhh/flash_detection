@@ -62,7 +62,7 @@ MODEL_CLASSES = {
     "UNet1D": UNet1D
 }
 
-models = load_models("notebooks/model_list.yaml", MODEL_CLASSES)
+models = load_models("model_list.yaml", MODEL_CLASSES)
 print(models.keys())
 
 ###################################### Single Flash ###########################################
@@ -211,5 +211,6 @@ if any(bool_values):
         for key in delta_results[name]:
             if key != "bin_counts":
                 delta_results[name][key] /= counts
-    
-    np.save("notebooks/performance_analysis/conv5_pos_nomerge_delta_stats.npy", delta_results, allow_pickle=True)
+
+        print("total merge pure: ", delta_results[name]["merge_pure"].mean().item())
+    np.save("notebooks/performance_analysis/conv5drop_plus_100phot_deltastats.npy", delta_results, allow_pickle=True)

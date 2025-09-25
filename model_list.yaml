@@ -1,0 +1,140 @@
+#*: Included in Original Performance Plots From 8.12
+
+# Transformers
+transformer_2M: #*
+  include: False
+  reg_loss: poisson_nll
+  class: TransformerModel
+  args: {}
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/transformer_params_50epochs.pth
+  single_flash_pstats: 'performance_analysis/c5M_t2M_singlephot_stats.npy'
+
+transformer_215: #*
+  include: False
+  reg_loss: poisson_nll
+  class: TransformerModel
+  args:
+    d_model: 48
+    num_heads: 4
+    num_layers: 2
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/transformer_215.pth
+  single_flash_pstats: 'performance_analysis/singleflash_eval_stats.npy'
+
+# Conformers
+conformer_50: #*
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    tokens: None
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_50epochs.pth
+  single_flash_pstats: 'performance_analysis/conform_trans5x_singlephot_stats.npy'
+
+conformer_5M: #*
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 2
+    tokens: 'multi-level'
+    mlp: False
+    downsample: 'pool'
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_5M_9.pth
+  single_flash_pstats: 'performance_analysis/c5M_t2M_singlephot_stats.npy'
+
+conformer_lite:
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 2
+    kernel_sizes: [10, 30, 90, 300, 900]
+    mlp: True
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/con_mlplite_k3_9.pth
+  single_flash_pstats: 'performance_analysis/con_mlp_singlephot.npy'
+
+conformer_v2:
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModelv2
+  args:
+      kernel_sizes: [10, 30, 90, 300, 900]
+      ffn_factor: 4
+      dropout: 0.1
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v2_20epochs.pth
+  single_flash_pstats: 'performance_analysis/reduced_overfit_confs_singlepstats.npy'
+  
+conformer_v5_drop:
+  include: True
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.2
+    mlp: False
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v5_drop_30epochs.pth
+  single_flash_pstats: 'performance_analysis/reduced_overfit_confs_singlepstats.npy'
+
+conformer_v5:
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.0
+    mlp: False
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v5_30epochs.pth
+  single_flash_pstats: 'performance_analysis/reduced_overfit_confs_singlepstats.npy'
+
+conformer_v3:
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModelv2
+  args:
+      ffn_factor: 8
+      dropout: 0.2
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v3/conformer_v3_34.pth
+  single_flash_pstats: 'performance_analysis/conv3_e34_singleflash_results.npy'
+
+conformer_v5_mse:
+  include: False
+  reg_loss: mse
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.2
+    mlp: False
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v5_mse/conformer_v5_drop_MSE_24.pth
+  single_flash_pstats: None
+
+conformer_v5_+:
+  include: True
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.2
+    mlp: False
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v5_+/conformer_v5+_34.pth
+  single_flash_pstats: None
+  
+# UNet*
+unet_50:
+  include: False
+  reg_loss: poisson_nll
+  class: UNet1D
+  args: {}
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/unet_28_49.pth
+  single_flash_pstats: 'performance_analysis/singleflash_eval_stats.npy'

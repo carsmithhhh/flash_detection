@@ -9,8 +9,8 @@ single_flash:
     reco_frac: False
 
 double_flash:
-    fixed_photon: random
-    merged_acc: True
+    fixed_photon: 100
+    merged_acc: False
     merged_pure: True
-    reco_frac: True
+    reco_frac: False
     

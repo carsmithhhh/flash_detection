@@ -3,3 +3,4 @@ notebooks/performance_analysis/no_delay_bin_precision/
 *.pkl
 wandb/
 wandb_data/
+._*
