@@ -21,7 +21,7 @@ import sys
 sys.path.append('..')
 sys.path.append('../..')
 from data_utils import *
-from waveforms.make_waveform import BatchedLightSimulation
+from waveforms.waveforms_module.make_waveform import BatchedLightSimulation
 
 import torch
 import numpy as np
@@ -62,13 +62,13 @@ MODEL_CLASSES = {
     "UNet1D": UNet1D
 }
 
-models = load_models("model_list.yaml", MODEL_CLASSES)
+models = load_models("oct_models.yaml", MODEL_CLASSES)
 print(models.keys())
 
 ###################################### Single Flash ###########################################
 if any(config["single_flash"].values()):
     
-    merge_loader = make_dataloader("/sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/1delayphot_reg.npy", seed=42, batch_size=25, shuffle=False)
+    merge_loader = make_dataloader("/sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/1delayphot_reg_NEW.npy", seed=42, batch_size=25, shuffle=False)
     print("Single Flash Loader Length: ", len(merge_loader))
     bin_width = 100
     batches_per_photon = 4
@@ -94,7 +94,7 @@ if any(config["single_flash"].values()):
                     predict_fn = torch.expm1 if reg_loss == 'mse' else torch.exp
                     
                     class_output, reg_output = model(data, mode="bce")
-                    merged_mask = merge_bins(class_output, skip_tol=0)
+                    merged_mask = merge_bins(class_output, skip_tol=5)
     
                     # interval widths
                     for b in range(merged_mask.shape[0]):
@@ -104,10 +104,18 @@ if any(config["single_flash"].values()):
                         interval_bins[name].extend(widths)
         
                     if config["single_flash"]["reco_frac"]:
-                        interval_pred_sums = sum_photons_in_intervals(predict_fn(reg_output), merged_mask)
-                        interval_true_sums = sum_photons_in_intervals(photon_target, merged_mask)
-                        pred = torch.tensor([np.sum(x) for x in interval_pred_sums])
-                        true = torch.tensor([np.sum(x) for x in interval_true_sums])
+                        # For summing over all bins in interval
+                        interval_pred_sums = sum_photons_in_intervals_vecwgrad(predict_fn(reg_output), merged_mask, keep_grads=False)
+                        interval_true_sums = sum_photons_in_intervals_vecwgrad(photon_target, merged_mask, keep_grads=False)
+                        pred = torch.stack([torch.sum(x[0]) for x in interval_pred_sums])
+                        true = torch.stack([torch.sum(x[0]) for x in interval_true_sums])
+                        
+                        # For choosing maximum bin
+                        # interval_pred_sums = max_photons_in_intervals(predict_fn(reg_output), merged_mask)
+                        # interval_true_sums = max_photons_in_intervals(photon_target, merged_mask)
+                        # pred = torch.cat([torch.tensor(x, dtype=torch.float32) for x in interval_pred_sums])
+                        # true = torch.cat([torch.tensor(x, dtype=torch.float32) for x in interval_true_sums])
+                        
                         mask = true > 0
                         if mask.any():
                             reco_frac[name] += torch.mean(pred[mask] / true[mask]).item()
@@ -141,14 +149,14 @@ if any(config["single_flash"].values()):
                         merged_acc[name] = 0.0
                         merged_pure[name] = 0.0
     
-    np.save("notebooks/performance_analysis/con_v5mse_v5+_singleflash_nomerge.npy", single_phot_results, allow_pickle=True)
+    np.save("notebooks/performance_analysis/OCT_singleflash_originalv5drop.npy", single_phot_results, allow_pickle=True)
 
 ###################################### Double Flash ###########################################
 bool_values = [v for v in config["double_flash"].values() if isinstance(v, bool)]
 if any(bool_values):
 
     delta_name = config["double_flash"]["fixed_photon"]
-    delta_loader = make_dataloader(f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delayed_delta_t/delta_t_{delta_name}phot.npy", seed=42, batch_size=25, shuffle=False)
+    delta_loader = make_dataloader(f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delayed_delta_t/delta_t_{delta_name}phot_NEW.npy", seed=42, batch_size=25, shuffle=False)
     print("Delta Loader Length: ", len(delta_loader))
     
     delta_results = {
@@ -183,8 +191,8 @@ if any(bool_values):
                     merged_mask = merge_bins(class_output, skip_tol=5)
     
                     if config["double_flash"]["reco_frac"]:
-                        interval_pred_sums = sum_photons_in_intervals(predict_fn(reg_output), merged_mask)
-                        interval_true_sums = sum_photons_in_intervals(photon_target, merged_mask)
+                        interval_pred_sums = sum_photons_in_intervals_vecwgrad(predict_fn(reg_output), merged_mask, keep_grads=False)
+                        interval_true_sums = sum_photons_in_intervals_vecwgrad(photon_target, merged_mask, keep_grads=False)
     
                     if config["double_flash"]["merged_acc"]:
                         flash1_acc_ls, flash2_acc_ls = merged_twoflash_acc(merged_mask, hit_times, device, no_sum=True)
@@ -196,11 +204,13 @@ if any(bool_values):
                         delta_results[name]["bin_counts"][idx] += 1
     
                         if config["double_flash"]["reco_frac"]:
-                            mask = np.array(interval_true_sums[b]) > 0
-                            valid_idx = np.where(mask)
-                            if len(valid_idx[0]) >= 2:
-                                delta_results[name]["reco_frac_flash1"][idx] += (interval_pred_sums[b][valid_idx[0][0]] / interval_true_sums[b][valid_idx[0][0]]).item()
-                                delta_results[name]["reco_frac_flash2"][idx] += (interval_pred_sums[b][valid_idx[0][1]] / interval_true_sums[b][valid_idx[0][1]]).item()
+                            mask = interval_true_sums[b][0] > 0
+                            valid_idx = torch.where(mask)[0].flatten()
+                            if valid_idx.numel() >= 2:
+                                # delta_results[name]["reco_frac_flash1"][idx] += (interval_pred_sums[b][valid_idx[0][0]] / interval_true_sums[b][valid_idx[0][0]]).item()
+                                # delta_results[name]["reco_frac_flash2"][idx] += (interval_pred_sums[b][valid_idx[0][1]] / interval_true_sums[b][valid_idx[0][1]]).item()
+                                delta_results[name]["reco_frac_flash1"][idx] += (interval_pred_sums[b][0][valid_idx[0]] / interval_true_sums[b][0][valid_idx[0]]).item()
+                                delta_results[name]["reco_frac_flash2"][idx] += (interval_pred_sums[b][0][valid_idx[1]] / interval_true_sums[b][0][valid_idx[1]]).item()
                         delta_results[name]["merge_acc_flash1"][idx] += flash1_acc_ls[b]
                         delta_results[name]["merge_acc_flash2"][idx] += flash2_acc_ls[b]
                         delta_results[name]["merge_pure"][idx] += purity_ls[b]
@@ -213,4 +223,4 @@ if any(bool_values):
                 delta_results[name][key] /= counts
 
         print("total merge pure: ", delta_results[name]["merge_pure"].mean().item())
-    np.save("notebooks/performance_analysis/conv5drop_plus_100phot_deltastats.npy", delta_results, allow_pickle=True)
+    np.save("notebooks/performance_analysis/OCT_doubleflash_originalv5drop.npy", delta_results, allow_pickle=True)

@@ -14,6 +14,7 @@ import wandb
 import torch.optim as optim
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 import matplotlib.gridspec as gridspec
+from evaluation import *
 
 import matplotlib.pyplot as plt
 
@@ -22,13 +23,12 @@ from conformer import *
 from utils import *
 
 seed = 42
-random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)  # if using CUDA
 
 # Loading in data
-load_wfs = np.load('/sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delay_200ks/2_8.npy', allow_pickle=True)
+load_wfs = np.load('/sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delay_200ks/2_8_NEW.npy', allow_pickle=True)
 dataset = WaveformDataset(load_wfs.item())
 
 g = torch.Generator()
@@ -106,14 +106,15 @@ test_loader = DataLoader(
     pin_memory=False,
     drop_last=False
 )
+print("train_loader len: ", len(train_loader))
 
 # Training
-epochs=50
+epochs=70
 device = 'cuda'
 
 logger = wandb.init(
-    project="conformer_token_kernels",
-    name="ckpts_conformer_v5_onlypos",
+    project="conformer_oct",
+    name="conformer_v5_drop_NEWunmerged",
     config={
         "epochs": epochs,
         "batch_size": batch_size,
@@ -128,7 +129,7 @@ logger = wandb.init(
 # )
 
 # Continue training Conformer, load from a checkpoint
-model = ConformerModel(d_model=256, num_heads=8, num_layers=4, token_size=100, window_len = 8000, tokens='multi-level', kernel_sizes=[20, 50, 100, 400], mlp=False, ffn_factor=8, dropout=0.2)
+model = ConformerModel(d_model=256, num_heads=8, num_layers=4, dropout=0.2, mlp=False)
 model.to(device)
 
 criterion = torch.nn.BCEWithLogitsLoss() # combines sigmoid + loss
@@ -154,6 +155,6 @@ torch.save({
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'scheduler_state_dict': scheduler.state_dict(),
-}, f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v5_drop_onlypos_50.pth")
+}, f"/sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v5_drop_70_NEWunmerged.pth")
 
 wandb.finish()

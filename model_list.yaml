@@ -21,6 +21,19 @@ transformer_215: #*
   single_flash_pstats: 'performance_analysis/singleflash_eval_stats.npy'
 
 # Conformers
+conformer_reg_debug:
+  include: False
+  reg_loss: poisson_nll
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.2
+    mlp: False
+  checkpoint: /sdf/home/c/carsmith/flash_reconstruction/flash_detection/notebooks/reg_20k_test.pth
+  single_flash_pstats: "performance_analysis/20K_REG_TESTING.npy"
+
 conformer_50: #*
   include: False
   reg_loss: poisson_nll
@@ -118,7 +131,7 @@ conformer_v5_mse:
   single_flash_pstats: None
 
 conformer_v5_+:
-  include: True
+  include: False
   reg_loss: poisson_nll
   class: ConformerModel
   args:
@@ -129,6 +142,19 @@ conformer_v5_+:
     mlp: False
   checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v5_+/conformer_v5+_34.pth
   single_flash_pstats: None
+
+conformer_v5_merge:
+  include: False
+  reg_loss: poisson_null
+  class: ConformerModel
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.2
+    mlp: False
+  checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v5_merge/34_small.pth
+  single_flash_pstats: 'performance_analysis/conv5merge_small_single.npy'
   
 # UNet*
 unet_50:

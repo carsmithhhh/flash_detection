@@ -1,8 +1,11 @@
 '''
 Weighted BCE and PoissonNLLLoss calculations, and performance metrics tracked during training.
 '''
-
+import sys
+sys.path.append('..')
 from collections import defaultdict
+# from flash_detection.evaluation import *
+import flash_detection.evaluation
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -83,25 +86,21 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
     masked_photon_target = None
     
     # Only calculate regression loss once classification has converged a bit to avoid seeing large # of 0's in early its
+    
     if include_reg:
-        # mask = (photon_target > 0)
+        # Old regression sampling --> gate by per-bin classification positives
         mask = (torch.sigmoid(class_output) > 0.5).squeeze(1)
         masked_reg_output = reg_output.squeeze(1)[mask]
         masked_photon_target = photon_target[mask]
-    
-        # Training regression instead on true positives + some sampled negatives - does NOT help regression systematic offset, as tested in in conformer_v3
-        # pos_mask = photon_target > 0
-        # neg_mask = photon_target == 0
+
+        # NEW 10.2: Merging
+        # merged_mask = merge_bins(class_output, skip_tol=5)
+        # summed_interval_output = sum_photons_in_intervals_vecwgrad(reg_output, merged_mask)
+        # summed_interval_target = sum_photons_in_intervals_vecwgrad(photon_target.unsqueeze(1), merged_mask) 
         
-        # pos_indices = pos_mask.nonzero(as_tuple=True)[0]
-        # neg_indices = neg_mask.nonzero(as_tuple=True)[0]
+        # masked_reg_output = torch.cat([t.flatten() for sublist in summed_interval_output for t in sublist])
         
-        # k = min(len(pos_indices), len(neg_indices)) # for now, 1:1 ratio
-        # sampled_neg_indices = neg_indices[torch.randperm(len(neg_indices))[:k]]
-        
-        # mixed_indices = torch.cat([pos_indices, sampled_neg_indices])
-        # masked_reg_output = reg_output.squeeze(1)[mixed_indices]
-        # masked_photon_target = photon_target[mixed_indices]
+        # masked_photon_target = torch.cat([t.flatten() for sublist in summed_interval_target for t in sublist])
 
     # Calculate BCEWithLogits loss on masked values
     if masked_target.numel() == 0:
@@ -118,16 +117,14 @@ def mined_bce_loss(data, hit_times, photon_list, class_output, reg_output, epoch
         class_loss = criterion(masked_class_output, masked_target)
 
         reg_loss = torch.tensor(0.0, device=device, requires_grad=True)
-        regression_criterion = torch.nn.PoissonNLLLoss(log_input=True)
-        if include_reg and masked_reg_output.numel() > 0:
-            reg_loss = regression_criterion(masked_reg_output, masked_photon_target)
         
-        # TESTING MSE WITH LOG1P REGRESSION LOSS
-        # regression_criterion = torch.nn.MSELoss()
-        # if include_reg and masked_reg_output.numel() > 0:
-        #     reg_pred = masked_reg_output.squeeze()
-        #     reg_true = torch.log1p(masked_photon_target.squeeze())
-        #     reg_loss = torch.mean((reg_pred - reg_true) ** 2)
+        #NEW 10.2: Merging
+        # For merging, log_input = False and F.softplus(masked_reg_output) in reg_criterion
+        # For not merging, log_input = True and there is no softplus
+        reg_criterion = torch.nn.PoissonNLLLoss(log_input=False)
+        if include_reg and masked_reg_output.numel() > 0:
+            reg_loss = reg_criterion(F.softplus(masked_reg_output), masked_photon_target)
+            # reg_loss = reg_criterion(masked_reg_output, masked_photon_target)
         
         scale_factor = 0.1
 

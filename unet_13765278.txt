@@ -1,0 +1,11 @@
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: carsmith (carsmith-stanford-university) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /sdf/home/c/carsmith/flash_reconstruction/flash_detection/wandb/run-20251015_104742-jxvmifjl
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run conformer_v5_drop_NEWunmerged
+wandb: ⭐️ View project at https://wandb.ai/carsmith-stanford-university/conformer_oct
+wandb: 🚀 View run at https://wandb.ai/carsmith-stanford-university/conformer_oct/runs/jxvmifjl
+/sdf/home/c/carsmith/flash_reconstruction/flash_detection/run_training.py:72: UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor. (Triggered internally at ../torch/csrc/utils/tensor_new.cpp:278.)
+  hit_times = torch.tensor(hit_times)
+slurmstepd: error: *** JOB 13765278 ON sdfampere027 CANCELLED AT 2025-10-15T11:21:31 ***

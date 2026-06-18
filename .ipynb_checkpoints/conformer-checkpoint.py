@@ -141,6 +141,9 @@ class ConformerModel(nn.Module):
         self.reg_l1 = nn.Conv1d(d_model, d_model // 2, 1)
         self.reg_l2 = nn.Conv1d(d_model // 2, 1, 1)
 
+        # Dispersion parameter for negative binomial 
+        # self.log_disp = nn.Parameter(torch.tensor(0.0)) # start with Poisson
+
     def forward(self, x, mode='mined_bce'):
         B, in_channels, window_len = x.shape
 
@@ -166,6 +169,8 @@ class ConformerModel(nn.Module):
         # Class & Reg Heads
         class_logits = self.class_l2(F.relu(self.class_l1(x)))
         reg_logits = self.reg_l2(F.relu(self.reg_l1(x)))
+
+        # disp = F.softplus(self.log_disp) + 1e-6
 
         return class_logits, reg_logits
 

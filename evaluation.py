@@ -11,6 +11,25 @@ from tqdm import tqdm
 import numpy as np
 import time
 
+def _compute_grad_norm(parameters, norm_type=2.0):
+    """Compute gradient norm for given parameters."""
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    
+    grads = [p.grad for p in parameters if p.grad is not None]
+    if len(grads) == 0:
+        return torch.tensor(0.0)
+    
+    if norm_type == float('inf'):
+        total_norm = max(g.abs().max() for g in grads)
+    else:
+        total_norm = torch.norm(
+            torch.stack([torch.norm(g, norm_type) for g in grads]), 
+            norm_type
+        )
+    
+    return total_norm
+
 def merge_bins(class_output, skip_tol=1):
     """
     Morphological closing on 1D binary masks.
@@ -102,6 +121,149 @@ def merged_class_purity(merged_mask, hit_times, device, no_sum=False): # compute
     else:
         return sum(batch_pures) / len(batch_pures)
 
+def sum_photons_in_intervals_wgrad(photon_counts, merged_mask):
+    """
+    Sum predicted photon counts within each continuous interval.
+
+    Parameters
+    ----------
+    photon_counts : torch.Tensor, shape [B, 1, L]
+        Regression outputs (can require grad).
+    merged_mask : torch.Tensor, shape [B, 1, L]
+        Binary mask of intervals (after merging).
+
+    Returns
+    -------
+    all_interval_sums : list of list of torch.Tensor
+        For each batch element, a list of interval photon sums (tensors).
+    """
+    B, C, L = photon_counts.shape
+    all_interval_sums = []
+
+    for b in range(B):
+        mask = merged_mask[b, 0]        # [L], still a tensor
+        counts = photon_counts[b, 0]    # [L], still a tensor (keeps grad)
+
+        interval_sums = []
+        in_interval = False
+        start = 0
+
+        for i in range(L):
+            if mask[i] == 1 and not in_interval:
+                # start of new interval
+                in_interval = True
+                start = i
+            elif mask[i] == 0 and in_interval:
+                # end of interval
+                in_interval = False
+                interval_sums.append(counts[start:i].sum())  # tensor sum
+
+        if in_interval:  # handle if it ends at the last bin
+            interval_sums.append(counts[start:].sum())
+
+        all_interval_sums.append(interval_sums)
+
+    return all_interval_sums
+
+def sum_photons_in_intervals_vecwgrad(photon_counts, merged_mask, keep_grads=True):
+    """
+    Vectorized version with autograd preserved.
+    Extraneous 0 bin at the beginning of each waveform? to investigate
+    """
+    B, _, L = photon_counts.shape
+    results = []
+
+    for b in range(B):
+        mask = merged_mask[b, 0]          # [L]
+        counts = photon_counts[b, 0]      # [L]
+
+        # Assign an interval id to each position: 0,0,0,1,1,1,...
+        # Mask positions with 0 get -1 (ignored)
+        interval_ids = (mask * (mask.diff(prepend=mask.new_zeros(1)) == 1).cumsum(0))
+        interval_ids[mask == 0] = -1
+
+        # Now use scatter_add to sum counts into intervals
+        valid_ids = interval_ids[interval_ids >= 0]
+        valid_counts = counts[interval_ids >= 0]
+        num_intervals = interval_ids.max().item() + 1 if valid_ids.numel() > 0 else 0
+
+        interval_sums = counts.new_zeros(num_intervals)
+        interval_sums.scatter_add_(0, valid_ids, valid_counts)
+
+        if keep_grads:
+            results.append([interval_sums])
+        else:
+            results.append([interval_sums.detach()])
+        
+    return results
+
+def max_photons_in_intervals(photon_counts, merged_mask, keep_grads=False):
+    B, _, L = photon_counts.shape
+    results = []
+
+    for b in range(B):
+        mask = merged_mask[b, 0]
+        counts = photon_counts[b, 0]
+
+        # Assign interval IDs: each contiguous region of mask==1 gets a unique ID
+        interval_ids = (mask * (mask.diff(prepend=mask.new_zeros(1)) == 1).cumsum(0))
+        interval_ids[mask == 0] = -1  # mark background as -1
+
+        valid_ids = interval_ids[interval_ids >= 0]
+        valid_counts = counts[interval_ids >= 0]
+        num_intervals = interval_ids.max().item() + 1 if valid_ids.numel() > 0 else 0
+
+        if num_intervals == 0:
+            # no intervals for this sample
+            results.append([])
+            continue
+
+        # Compute max per interval
+        interval_max = torch.full(
+            (num_intervals,),
+            float("-inf"),
+            device=counts.device,
+            dtype=torch.float32,
+        )
+        interval_max.scatter_reduce_(
+            0, valid_ids, valid_counts.float(), reduce="amax", include_self=True
+        )
+
+        # Save either tensor (for autograd) or detached CPU list of scalars
+        if keep_grads:
+            results.append(interval_max)
+        else:
+            results.append(interval_max.detach().cpu().tolist())
+
+    return results
+    
+# def max_photons_in_intervals(photon_counts, merged_mask, keep_grads=False):
+#     B, _, L = photon_counts.shape
+#     results = []
+
+#     for b in range(B):
+#         mask = merged_mask[b, 0]
+#         counts = photon_counts[b, 0]
+
+#         interval_ids = (mask * (mask.diff(prepend=mask.new_zeros(1)) == 1).cumsum(0))
+#         interval_ids[mask == 0] = -1
+
+#         # Now use scatter_add to sum counts into intervals
+#         valid_ids = interval_ids[interval_ids >= 0]
+#         valid_counts = counts[interval_ids >= 0]
+#         num_intervals = interval_ids.max().item() + 1 if valid_ids.numel() > 0 else 0
+
+#         interval_max = torch.full((num_intervals,), float("-inf"), device=counts.device, dtype=torch.float32)
+#         interval_max.scatter_reduce_(0, valid_ids, valid_counts.float(), reduce="amax", include_self=True)
+        
+#         if keep_grads:
+#             results.append([interval_max])
+#         else:
+#             results.append([interval_max.detach().item()])
+        
+#     return results
+
+#USE VECTORIZED INSTEAD!!!
 def sum_photons_in_intervals(photon_counts, merged_mask):
     """
     Sum predicted photon counts within each continuous interval.
