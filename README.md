@@ -1,8 +1,8 @@
 # flash_detection
 
 Per-time-bin **flash detection** (classification) and **photon regression** on
-LArTPC optical waveforms. Three architectures are provided — a 1D U-Net, a
-transformer encoder, and a conformer (plus a conformer variant) — all sharing one
+LArTPC optical waveforms. Three architectures are provided -- a 1D U-Net, a
+transformer encoder, and a conformer (plus a conformer variant) -- all sharing one
 data pipeline, loss, training loop, and evaluation suite.
 
 Each waveform may contain several flashes. A model predicts, for every time bin,
@@ -33,15 +33,14 @@ archive/                  the original research notebooks and scripts (kept for 
 ```
 
 ## Install
-
+** I haven't extensively tested environment setup with the new refactor so you may have to play around with this a little. **
 ```bash
 pip install -r requirements.txt
 # optional, makes `import flashdet` work from anywhere:
 pip install -e .
 ```
 
-On the SLAC SDF cluster the dependencies are already in the singularity image used
-by `training_job.sbatch`, so no install is needed there.
+You may not need to install anything if running on SDF (many packages are already installed), or can just install as you try to run and it throws errors.
 
 ## Quickstart
 
@@ -49,6 +48,9 @@ by `training_job.sbatch`, so no install is needed there.
 the sibling [`waveforms`](../waveforms) simulation package), or point a config at an
 existing `.npy` file. A dataset is a pickled dict with `waveforms`, `arrival_times`,
 and `num_photons` (see `flashdet/data.py`).
+
+Adjust paths in the `config` file, and make sure `wandb` is setup correctly to route to your account. Everything is still hardcoded to my directories. If there are
+files that are buried in my directories I can move them elsewhere if it is more convenient, just let me know.
 
 **2. Train.** Pick a config and run:
 
@@ -63,6 +65,8 @@ On the cluster, submit a batch job (defaults to `configs/conformer.yaml`):
 ```bash
 sbatch training_job.sbatch configs/unet.yaml
 ```
+This is the most convenient way to submit long training jobs and let them run while you are away from the computer! For small tests/debugging, it is usually better
+to work in a jupyter notebook or terminal session.
 
 **3. Evaluate.** Edit `configs/evaluation.yaml` to list trained checkpoints, then:
 
