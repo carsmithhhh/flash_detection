@@ -1,9 +1,22 @@
-notebooks/performance_analysis/no_delay_bin_precision/
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# macOS
+._*
+.DS_Store
+
+# Trained weights / pickles / results
 *.pth
 *.pkl
+results/
+
+# Weights & Biases
 wandb/
 wandb_data/
-tutorial_notebooks/wandb/
-notebooks/animations/notebooks/no_delay_fixed_phot_samples/
 
-._*
+# Local demo data from example notebooks
+examples/*.npy
+
+*.txt

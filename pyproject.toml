@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashdet"
+version = "0.1.0"
+description = "Flash detection and photon regression on LArTPC optical waveforms."
+requires-python = ">=3.8"
+dependencies = [
+    "torch",
+    "numpy",
+    "scipy",
+    "pyyaml",
+    "matplotlib",
+    "tqdm",
+    "wandb",
+]
+
+[tool.setuptools.packages.find]
+include = ["flashdet*"]

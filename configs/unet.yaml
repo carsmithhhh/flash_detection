@@ -1,0 +1,41 @@
+# 1D U-Net training config.
+# The U-Net operates at full waveform resolution and crops/pads internally, so it
+# does not take a window_len argument.
+# Run with:  python train.py --config configs/unet.yaml
+seed: 42
+
+model:
+  name: unet
+  args:
+    in_channels: 1
+    base_channels: 32
+    depth: 4
+
+data:
+  path: /sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delay_200ks/2_8_NEW.npy
+  batch_size: 25
+  val_ratio: 0.1
+  test_ratio: 0.0
+  num_workers: 0
+
+optim:
+  lr: 1.0e-4
+  weight_decay: 1.0e-6
+  scheduler:
+    factor: 0.5
+    patience: 2
+
+train:
+  epochs: 50
+  mode: mined_bce
+  mse: false
+  device: cuda
+  val_every: 5
+  save_every: 5
+  checkpoint_dir: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/unet_run
+  final_checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/unet_run/final.pth
+
+wandb:
+  enabled: false
+  project: flash_detection
+  name: unet_run

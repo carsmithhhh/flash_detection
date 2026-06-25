@@ -1,0 +1,42 @@
+# ConformerModelv2 training config (fixed multi-level tokenizer + Upsample decoder).
+# Run with:  python train.py --config configs/conformer_v2.yaml
+seed: 42
+
+model:
+  name: conformer_v2
+  args:
+    d_model: 256
+    num_heads: 8
+    num_layers: 4
+    ffn_factor: 4
+    conv_kernel_size: 21   # depthwise conv kernel (odd); ~ the ~20 ns rising edge
+    dropout: 0.1
+
+data:
+  path: /sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delay_200ks/2_8_NEW.npy
+  batch_size: 25
+  val_ratio: 0.1
+  test_ratio: 0.0
+  num_workers: 0
+
+optim:
+  lr: 1.0e-4
+  weight_decay: 1.0e-6
+  scheduler:
+    factor: 0.5
+    patience: 2
+
+train:
+  epochs: 30
+  mode: mined_bce
+  mse: false
+  device: cuda
+  val_every: 5
+  save_every: 5
+  checkpoint_dir: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v2_run
+  final_checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/conformer_ckpts/conformer_v2_run/final.pth
+
+wandb:
+  enabled: false
+  project: flash_detection
+  name: conformer_v2_run

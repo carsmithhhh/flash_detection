@@ -1,10 +1,99 @@
 # flash_detection
-Individual flash detection in LArTPC optical waveforms.
-Some paths still need to be updated in files and notebooks since reorganization - will fix as I encounter.
 
-**Main Workflow**
-* `notebooks/simulating_data.ipynb`: Generate a sample of optical waveform data
-* `run_training.py`: Instantiate a model architecture & training configuration; train the model.
-* `performance_analysis.py`: Evaluate the performance of model on various benchmarks (Configure which models to include and which evaluations to run in `model_list.yaml` and `performance_analysis_config.yaml`. Also log file paths to evaluation results in `model_list.yaml`.)
-* `final_analysis.ipynb`: Load in evaluation results & plot them for specified model versions.
-* `compare_networks.ipynb`: Visualize single-waveform predictions for various model versions side-by-side.
+Per-time-bin **flash detection** (classification) and **photon regression** on
+LArTPC optical waveforms. Three architectures are provided — a 1D U-Net, a
+transformer encoder, and a conformer (plus a conformer variant) — all sharing one
+data pipeline, loss, training loop, and evaluation suite.
+
+Each waveform may contain several flashes. A model predicts, for every time bin,
+(1) whether a flash starts there and (2) how many photons it carries.
+
+## Layout
+
+```
+flashdet/                 importable library
+├── models/
+│   ├── layers.py         shared blocks: ResidualBlock1D, PositionalEncoding, MultiLevelTokenizer
+│   ├── unet.py           UNet1D
+│   ├── transformer.py    TransformerModel
+│   ├── conformer.py      ConformerModel, ConformerModelv2
+│   ├── conformer_block.py  from-scratch Conformer encoder (no torchaudio)
+│   └── __init__.py       MODEL_REGISTRY + build_model(name, **args)
+├── data.py               WaveformDataset, dataloaders, train/val split
+├── losses.py             mined_bce_loss (mining + Poisson regression), bce_loss
+├── metrics.py            per-bin + merged-interval metrics, prediction post-processing
+├── engine.py             train / validate / save_checkpoint
+└── utils.py              config loading, seeding, optimizer/scheduler, checkpoint loading
+
+train.py                  CLI: train a model from a YAML config
+evaluate.py               CLI: benchmark trained models, save .npy stats
+configs/                  one YAML per model + evaluation.yaml
+examples/                 example notebooks (simulate, train, lr search, plots)
+archive/                  the original research notebooks and scripts (kept for reference)
+```
+
+## Install
+
+```bash
+pip install -r requirements.txt
+# optional, makes `import flashdet` work from anywhere:
+pip install -e .
+```
+
+On the SLAC SDF cluster the dependencies are already in the singularity image used
+by `training_job.sbatch`, so no install is needed there.
+
+## Quickstart
+
+**1. Get data.** Generate a dataset with `examples/00_simulate_dataset.ipynb` (uses
+the sibling [`waveforms`](../waveforms) simulation package), or point a config at an
+existing `.npy` file. A dataset is a pickled dict with `waveforms`, `arrival_times`,
+and `num_photons` (see `flashdet/data.py`).
+
+**2. Train.** Pick a config and run:
+
+```bash
+python train.py --config configs/conformer.yaml
+# quick overrides for experiments:
+python train.py --config configs/conformer.yaml --epochs 5 --lr 3e-4 --no-wandb
+```
+
+On the cluster, submit a batch job (defaults to `configs/conformer.yaml`):
+
+```bash
+sbatch training_job.sbatch configs/unet.yaml
+```
+
+**3. Evaluate.** Edit `configs/evaluation.yaml` to list trained checkpoints, then:
+
+```bash
+python evaluate.py --config configs/evaluation.yaml   # writes results/*.npy
+```
+
+**4. Plot.** `examples/03_plots_and_figures.ipynb` loads the `results/*.npy` files
+and reproduces the key benchmark figures.
+
+## Configs
+
+Each `configs/<model>.yaml` is self-contained: `model` (registry `name` + `args`),
+`data` (path, batch size, split ratios), `optim` (lr, weight decay, scheduler),
+`train` (epochs, mode, device, checkpoint locations), and `wandb` (logging toggle).
+Paths default to the SDF cluster — update `data.path` / `*_checkpoint*` for your
+environment. The training loss `mode` is `mined_bce` (hard-negative mining +
+regression) or `bce` (plain class-balanced BCE).
+
+## Adding a model
+
+1. Implement it in a new file under `flashdet/models/` returning
+   `(class_logits, reg_logits)` of shape `[B, 1, L]`.
+2. Register it in `flashdet/models/__init__.py` (`MODEL_REGISTRY`).
+3. Copy a config in `configs/`, set `model.name` to the new key, and train.
+
+## Examples
+
+| Notebook | Shows |
+| --- | --- |
+| `00_simulate_dataset.ipynb` | Generate and inspect a waveform dataset. |
+| `01_train_models.ipynb`     | Build and train each architecture via the library. |
+| `02_lr_search.ipynb`        | A small learning-rate sweep. |
+| `03_plots_and_figures.ipynb`| Reproduce the benchmark figures from `evaluate.py` output. |

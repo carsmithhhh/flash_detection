@@ -1,0 +1,43 @@
+# Performance-benchmark config for evaluate.py.
+# Run with:  python evaluate.py --config configs/evaluation.yaml
+#
+# Add a model by giving it a name and an entry under `models:` with a registry
+# `class`, constructor `args`, and a trained `checkpoint`. Set `include: false`
+# to keep an entry around without evaluating it. `reg_loss` selects how the
+# regression output is decoded: 'mse' -> expm1, anything else -> exp.
+seed: 42
+device: cuda
+output_dir: results
+
+data:
+  single_flash: /sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/1delayphot_reg_NEW.npy
+  # {photon} is filled from studies.double_flash.fixed_photon (random/10/50/100/500/1000)
+  double_flash_template: /sdf/home/c/carsmith/sdf_data/flash_detection_data/flash_files/delayed_delta_t/delta_t_{photon}phot_NEW.npy
+
+studies:
+  single_flash:
+    enabled: true
+    merged_acc: true
+    merged_pure: true
+    merged_window_width: true
+    reco_frac: true
+    batches_per_photon: 4
+  double_flash:
+    enabled: true
+    fixed_photon: random
+    merged_acc: true
+    merged_pure: true
+    reco_frac: true
+
+models:
+  conformer_v5_drop:
+    include: true
+    reg_loss: poisson_nll
+    class: conformer
+    args:
+      d_model: 256
+      num_heads: 8
+      num_layers: 4
+      dropout: 0.2
+      mlp: false
+    checkpoint: /sdf/home/c/carsmith/sdf_data/flash_detection_data/delay_200ks_ckpts/conformer_v5_drop_30epochs.pth
